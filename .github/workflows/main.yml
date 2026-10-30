@@ -1,10 +1,8 @@
-name: Build DynamicNotch (rootless)
+name: Build and Publish DynamicNotch
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,12 +10,14 @@ permissions:
 
 jobs:
   build:
+    name: Build Debian Package
     runs-on: macos-15
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install dependencies
         run: brew install ldid xz dpkg
 
       - name: Install Theos
@@ -27,25 +27,110 @@ jobs:
           echo "THEOS=$RUNNER_TEMP/theos" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/theos/sdks"
 
-      - name: Install latest SDK available in Theos SDK repository
+      - name: Install iOS SDK
         shell: bash
         run: |
           git clone --depth 1 https://github.com/theos/sdks.git "$RUNNER_TEMP/theos-sdks"
-          SDK_PATH="$(find "$RUNNER_TEMP/theos-sdks" -maxdepth 1 -type d -name 'iPhoneOS*.sdk' | sort -V | tail -n 1)"
+
+          SDK_PATH="$(find "$RUNNER_TEMP/theos-sdks" \
+            -mindepth 1 -maxdepth 1 -type d \
+            -name 'iPhoneOS*.sdk' | sort -V | tail -n 1)"
+
           test -n "$SDK_PATH"
           cp -R "$SDK_PATH" "$RUNNER_TEMP/theos/sdks/"
-          echo "Selected SDK: $(basename "$SDK_PATH")"
 
-      - name: Build single rootless package (iOS 15.0+)
+      - name: Compile DynamicNotch
         run: make package FINALPACKAGE=1
-
-      - name: List generated package
-        run: ls -lah packages/*.deb
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
         with:
-          name: DynamicNotch-rootless-deb
+          name: DynamicNotch-deb
           path: packages/*.deb
           if-no-files-found: error
-          retention-days: 14
+
+  publish:
+    name: Publish Sileo APT Repository
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Debian package
+        uses: actions/download-artifact@v4
+        with:
+          name: DynamicNotch-deb
+          path: downloaded-deb
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install repository tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils gzip
+
+      - name: Generate APT repository
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p _site/debs
+
+          DEB="$(find downloaded-deb -type f -name '*.deb' -print -quit)"
+          test -n "$DEB"
+
+          cp "$DEB" _site/debs/
+
+          cd _site
+
+          dpkg-scanpackages --arch iphoneos-arm64 debs /dev/null > Packages
+
+          gzip -9 -kf Packages
+
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin="DynamicNotch" \
+            -o APT::FTPArchive::Release::Label="DynamicNotch" \
+            -o APT::FTPArchive::Release::Description="DynamicNotch Rootless Repository" \
+            release . > Release
+
+          touch .nojekyll
+
+          cat > index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>DynamicNotch Repository</title>
+          </head>
+          <body>
+            <h1>DynamicNotch</h1>
+            <p>Official APT repository.</p>
+            <p>Rootless package for iOS 15 and newer.</p>
+            <p>Use the repository URL in Sileo to install DynamicNotch.</p>
+          </body>
+          </html>
+          HTML
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
