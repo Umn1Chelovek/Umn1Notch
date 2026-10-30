@@ -1,0 +1,51 @@
+name: Build DynamicNotch (rootless)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install ldid xz dpkg
+
+      - name: Install Theos
+        shell: bash
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$RUNNER_TEMP/theos"
+          echo "THEOS=$RUNNER_TEMP/theos" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/theos/sdks"
+
+      - name: Install latest SDK available in Theos SDK repository
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/theos/sdks.git "$RUNNER_TEMP/theos-sdks"
+          SDK_PATH="$(find "$RUNNER_TEMP/theos-sdks" -maxdepth 1 -type d -name 'iPhoneOS*.sdk' | sort -V | tail -n 1)"
+          test -n "$SDK_PATH"
+          cp -R "$SDK_PATH" "$RUNNER_TEMP/theos/sdks/"
+          echo "Selected SDK: $(basename "$SDK_PATH")"
+
+      - name: Build single rootless package (iOS 15.0+)
+        run: make package FINALPACKAGE=1
+
+      - name: List generated package
+        run: ls -lah packages/*.deb
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DynamicNotch-rootless-deb
+          path: packages/*.deb
+          if-no-files-found: error
+          retention-days: 14
