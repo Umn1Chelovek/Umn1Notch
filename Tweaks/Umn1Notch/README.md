@@ -1,22 +1,11 @@
 # Umn1Notch
 
-**Version:** 0.4.1  
+**Version:** 0.5.0  
 **Package:** `com.umn1notch.tweak`  
 **Target:** rootless jailbreaks on iOS 15.0 and newer  
 **Test device reported by the project owner:** iPhone 7 Plus, iOS 15.8.6
 
 Umn1Notch is an experimental Dynamic Island-style overlay for iPhones with a physical notch and supported models without a built-in Dynamic Island.
-
-## Changes in 0.4.0 (packaged as 0.4.1)
-
-- Adds a PreferenceLoader settings page named **Umn1Notch** in the iOS Settings app.
-- Adds an editable island profile selector: Auto, Wide, or Compact. The selected profile can be changed at any time in Settings.
-- Adds an emergency gesture threshold slider from 5 to 25 taps. The gesture always opens a confirmation dialog; it never dials automatically. A user must explicitly press **Call 112** to open the phone interface.
-- Adds switches for the main overlay, emergency gesture, molten-metal effect, startup glow, music player, charging, audio accessories, calls, and silent-mode indicators.
-- Replaces the previous stepped hold colours with a continuous heat-up animation from charcoal through red/orange/yellow to white-hot.
-- Reworks the screen effect into a short, stylized molten-metal particle plume that emits from the island and spreads down the display. It is a purely visual effect.
-- Uses MediaRemote's now-playing information when available, with SpringBoard/MediaPlayer fallbacks for metadata and artwork.
-- Renames the injected library to `Umn1Notch.dylib` to avoid colliding with unrelated tweaks that used `DynamicNotch.dylib`.
 
 ## Settings
 
