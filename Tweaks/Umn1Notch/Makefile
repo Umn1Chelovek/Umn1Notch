@@ -25,3 +25,4 @@ Umn1NotchPrefs_CFLAGS = -fobjc-arc
 Umn1NotchPrefs_RESOURCE_DIRS = Preferences/Resources
 
 include $(THEOS_MAKE_PATH)/bundle.mk
+ 
