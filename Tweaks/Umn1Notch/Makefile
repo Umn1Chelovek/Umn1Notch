@@ -1,7 +1,7 @@
 THEOS ?= $(HOME)/theos
 
 # Rootless package for supported jailbreaks on iOS 15 and newer.
-TARGET = iphone:clang:latest:15.0
+TARGET = iphone:clang:16.5:15.0
 ARCHS = arm64 arm64e
 THEOS_PACKAGE_SCHEME = rootless
 
