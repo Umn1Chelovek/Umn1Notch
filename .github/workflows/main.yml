@@ -1,4 +1,5 @@
-name: Build and Publish DynamicNotch
+
+name: Build and Publish Umn1Notch
 
 on:
   push:
@@ -36,16 +37,20 @@ jobs:
             -mindepth 1 -maxdepth 1 -type d \
             -name 'iPhoneOS*.sdk' | sort -V | tail -n 1)"
 
-          test -n "$SDK_PATH"
+          if [ -z "$SDK_PATH" ]; then
+            echo "ERROR: iOS SDK not found"
+            exit 1
+          fi
+
           cp -R "$SDK_PATH" "$RUNNER_TEMP/theos/sdks/"
 
-      - name: Compile DynamicNotch
+      - name: Compile Umn1Notch
         run: make package FINALPACKAGE=1
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
         with:
-          name: DynamicNotch-deb
+          name: Umn1Notch-deb
           path: packages/*.deb
           if-no-files-found: error
 
@@ -72,7 +77,7 @@ jobs:
       - name: Download Debian package
         uses: actions/download-artifact@v4
         with:
-          name: DynamicNotch-deb
+          name: Umn1Notch-deb
           path: downloaded-deb
 
       - name: Configure GitHub Pages
@@ -91,7 +96,18 @@ jobs:
           mkdir -p _site/debs
 
           DEB="$(find downloaded-deb -type f -name '*.deb' -print -quit)"
-          test -n "$DEB"
+
+          if [ -z "$DEB" ]; then
+            echo "ERROR: Debian package not found"
+            exit 1
+          fi
+
+          PACKAGE_ARCH="$(dpkg-deb -f "$DEB" Architecture)"
+
+          if [ "$PACKAGE_ARCH" != "iphoneos-arm64" ]; then
+            echo "ERROR: Unexpected package architecture: $PACKAGE_ARCH"
+            exit 1
+          fi
 
           cp "$DEB" _site/debs/
 
@@ -99,13 +115,36 @@ jobs:
 
           dpkg-scanpackages --arch iphoneos-arm64 debs /dev/null > Packages
 
+          if [ ! -s Packages ]; then
+            echo "ERROR: Packages index is empty"
+            exit 1
+          fi
+
+          if ! grep -q '^Package: com.umn1notch.tweak$' Packages; then
+            echo "ERROR: Umn1Notch package missing from Packages index"
+            exit 1
+          fi
+
           gzip -9 -kf Packages
 
           apt-ftparchive \
-            -o APT::FTPArchive::Release::Origin="DynamicNotch" \
-            -o APT::FTPArchive::Release::Label="DynamicNotch" \
-            -o APT::FTPArchive::Release::Description="DynamicNotch Rootless Repository" \
+            -o APT::FTPArchive::Release::Origin="Umn1Chelovek" \
+            -o APT::FTPArchive::Release::Label="Umn1Notch" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Codename="ios" \
+            -o APT::FTPArchive::Release::Architectures="iphoneos-arm64" \
+            -o APT::FTPArchive::Release::Description="Umn1Notch Rootless Repository" \
             release . > Release
+
+          if ! grep -q '^Architectures: iphoneos-arm64$' Release; then
+            echo "ERROR: Architecture missing from Release file"
+            exit 1
+          fi
+
+          echo "Repository generated successfully:"
+          cat Release
+
+          gzip -t Packages.gz
 
           touch .nojekyll
 
@@ -115,13 +154,13 @@ jobs:
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>DynamicNotch Repository</title>
+            <title>Umn1Notch Repository</title>
           </head>
           <body>
-            <h1>DynamicNotch</h1>
+            <h1>Umn1Notch</h1>
             <p>Official APT repository.</p>
             <p>Rootless package for iOS 15 and newer.</p>
-            <p>Use the repository URL in Sileo to install DynamicNotch.</p>
+            <p>Maintained by Umn1Chelovek.</p>
           </body>
           </html>
           HTML
