@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreTelephony/CTCall.h>
 #import <CoreTelephony/CTCallCenter.h>
+#import <CoreFoundation/CoreFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -14,6 +15,8 @@ static NSMutableDictionary<NSString *, NSValue *> *gStatusBarOriginalIMPs = nil;
 static char kDNOriginalStatusBarTransformKey;
 static void DNStatusBarLayoutHook(id object, SEL selector);
 static void DNMoveStatusBarChildren(UIView *statusBar);
+static void DNPreferencesChangedCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo);
+static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo);
 
 #pragma mark - Device information
 
@@ -37,7 +40,41 @@ typedef NS_ENUM(NSInteger, DNNotchProfile) {
     DNNotchProfileNarrow = 1  // Visual profile modeled after iPhone 13–14
 };
 
-static NSString * const kDNNotchProfileDefaultsKey = @"com.dynamicnotch.selectedNotchProfile";
+static NSString * const kDNNotchProfileDefaultsKey = @"IslandProfile";
+static NSString * const kDNPreferenceDomain = @"com.umn1notch.preferences";
+static NSString * const kDNPreferencePath = @"/var/mobile/Library/Preferences/com.umn1notch.preferences.plist";
+static CFStringRef const kDNPreferencesChangedNotification = CFSTR("com.umn1notch.preferences/Reload");
+
+static NSDictionary *DNReadPreferences(void) {
+    NSDictionary *preferences = [NSDictionary dictionaryWithContentsOfFile:kDNPreferencePath];
+    return [preferences isKindOfClass:NSDictionary.class] ? preferences : @{};
+}
+
+static id DNPreferenceValue(NSString *key, id fallback) {
+    id value = DNReadPreferences()[key];
+    return value ?: fallback;
+}
+
+static BOOL DNPreferenceBool(NSString *key, BOOL fallback) {
+    id value = DNPreferenceValue(key, @(fallback));
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
+static NSInteger DNPreferenceInteger(NSString *key, NSInteger fallback) {
+    id value = DNPreferenceValue(key, @(fallback));
+    return [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : fallback;
+}
+
+static void DNWritePreference(NSString *key, id value) {
+    NSMutableDictionary *preferences = [DNReadPreferences() mutableCopy] ?: [NSMutableDictionary dictionary];
+    preferences[key] = value;
+    NSError *directoryError = nil;
+    [[NSFileManager defaultManager] createDirectoryAtPath:@"/var/mobile/Library/Preferences"
+                              withIntermediateDirectories:YES attributes:nil error:&directoryError];
+    [preferences writeToFile:kDNPreferencePath atomically:YES];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                          kDNPreferencesChangedNotification, NULL, NULL, YES);
+}
 
 static BOOL DNIsDynamicIslandModel(NSString *model) {
     // iPhone 14 Pro/Pro Max and later Dynamic-Island families.
@@ -233,7 +270,7 @@ static UIColor *DNColorFromDevice(void) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.layer.cornerRadius = MIN(CGRectGetHeight(self.bounds) / 2.0, 40.0);
+    self.layer.cornerRadius = MIN(CGRectGetHeight(self.bounds) / 2.0, 42.0);
     if (self.greetingOutline) {
         self.greetingOutline.frame = self.bounds;
         self.greetingOutline.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(self.bounds, 1.5, 1.5)
@@ -320,6 +357,21 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 @property(nonatomic, assign) BOOL holdActive;
 @property(nonatomic, assign) BOOL detonationFinished;
 @property(nonatomic, assign) NSInteger holdPhase;
+@property(nonatomic, assign) NSInteger emergencyTapCount;
+@property(nonatomic, assign) NSTimeInterval heatDuration;
+@property(nonatomic, assign) BOOL mediaEnabled;
+@property(nonatomic, assign) BOOL chargingEnabled;
+@property(nonatomic, assign) BOOL accessoriesEnabled;
+@property(nonatomic, assign) BOOL callsEnabled;
+@property(nonatomic, assign) BOOL silentEnabled;
+@property(nonatomic, assign) BOOL settingsEnabled;
+@property(nonatomic, assign) BOOL sosGestureEnabled;
+@property(nonatomic, assign) BOOL moltenEffectEnabled;
+@property(nonatomic, assign) BOOL greetingEnabled;
+@property(nonatomic, assign) BOOL preferencesObserverInstalled;
+@property(nonatomic, assign) BOOL mediaRequestInFlight;
+@property(nonatomic, assign) NSUInteger mediaRequestGeneration;
+@property(nonatomic, assign) NSInteger configuredIslandProfile;
 @property(nonatomic, strong) DNOverlayWindow *explosionWindow;
 + (instancetype)shared;
 - (void)start;
@@ -331,6 +383,8 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 - (void)presentNotchStylePicker;
 - (void)handleProfileTap:(UITapGestureRecognizer *)recognizer;
 - (void)selectNotchProfile:(DNNotchProfile)profile;
+- (void)reloadPreferences;
+- (void)refreshMediaInformation;
 @end
 
 @implementation DNController
@@ -345,21 +399,29 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 - (void)start {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"] || self.window) return;
 
+    [self reloadPreferences];
+    // Register before checking Enabled, so the Settings switch can turn the overlay back on
+    // without requiring a respring after it was disabled.
+    if (!self.preferencesObserverInstalled) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge const void *)(self),
+                                        DNPreferencesChangedCallback, kDNPreferencesChangedNotification,
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        self.preferencesObserverInstalled = YES;
+    }
+    if (!self.settingsEnabled) return;
+
     self.hardwareModel = DNHardwareModel();
     if (DNIsDynamicIslandModel(self.hardwareModel)) return;
 
-    BOOL hasPhysicalNotch = DNHasKnownNotch(self.hardwareModel);
-    self.virtualNotch = !hasPhysicalNotch && DNIsVirtualNotchEligibleModel(self.hardwareModel);
-    if (!hasPhysicalNotch && !self.virtualNotch) return;
+    BOOL hasPhysicalIslandArea = DNHasKnownNotch(self.hardwareModel);
+    self.virtualNotch = !hasPhysicalIslandArea && DNIsVirtualNotchEligibleModel(self.hardwareModel);
+    if (!hasPhysicalIslandArea && !self.virtualNotch) return;
 
-    if (self.virtualNotch) {
-        id savedProfile = [NSUserDefaults.standardUserDefaults objectForKey:kDNNotchProfileDefaultsKey];
-        self.shouldShowProfilePicker = (savedProfile == nil);
-        NSInteger profileValue = [savedProfile respondsToSelector:@selector(integerValue)]
-            ? [savedProfile integerValue] : DNNotchProfileWide;
-        self.narrowNotch = (profileValue == DNNotchProfileNarrow);
+    id savedProfile = DNReadPreferences()[kDNNotchProfileDefaultsKey];
+    self.shouldShowProfilePicker = (self.virtualNotch && savedProfile == nil);
+    if (savedProfile && [savedProfile integerValue] != -1) {
+        self.narrowNotch = ([savedProfile integerValue] == DNNotchProfileNarrow);
     } else {
-        // On devices with a physical notch, choose the profile automatically.
         self.narrowNotch = DNHasNarrowNotch(self.hardwareModel);
     }
     self.deviceColor = DNColorFromDevice();
@@ -392,8 +454,7 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     [self.notch addGestureRecognizer:hold];
     [tap requireGestureRecognizerToFail:hold];
 
-    // On notchless devices, a two-finger tap reopens the profile selector.
-    // It does not interfere with the one-finger tap counter or long-press easter egg.
+    // Quick two-finger shortcut is retained; the full selector is also available in Settings > Umn1Notch.
     if (self.virtualNotch) {
         UITapGestureRecognizer *profileTap = [[UITapGestureRecognizer alloc] initWithTarget:self
                                                                                        action:@selector(handleProfileTap:)];
@@ -404,11 +465,11 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     }
 
     [self refreshHitRegion];
-    [self.notch playGreetingWithColor:self.deviceColor];
+    if (self.greetingEnabled) [self.notch playGreetingWithColor:self.deviceColor];
     [self installSystemObservers];
     [self installStatusBarHooks];
     [self refreshEvents];
-    self.pollTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(pollSystemState)
+    self.pollTimer = [NSTimer scheduledTimerWithTimeInterval:1.25 target:self selector:@selector(pollSystemState)
                                                     userInfo:nil repeats:YES];
 
     if (self.virtualNotch && self.shouldShowProfilePicker) {
@@ -424,7 +485,14 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
                                                  name:UIDeviceBatteryStateDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pollSystemState)
                                                  name:AVAudioSessionRouteChangeNotification object:nil];
-
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshMediaInformation)
+                                                 name:@"SBMediaControllerNowPlayingInfoDidChangeNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshMediaInformation)
+                                                 name:@"kMRMediaRemoteNowPlayingInfoDidChangeNotification" object:nil];
+    CFNotificationCenterAddObserver(CFNotificationCenterGetLocalCenter(), (__bridge const void *)(self),
+                                    DNMediaRemoteChangedCallback,
+                                    CFSTR("kMRMediaRemoteNowPlayingInfoDidChangeNotification"),
+                                    NULL, CFNotificationSuspensionBehaviorCoalesce);
     __weak typeof(self) weakSelf = self;
     self.callCenter = [CTCallCenter new];
     self.callCenter.callEventHandler = ^(CTCall *call) {
@@ -439,6 +507,7 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 }
 
 - (void)pollSystemState {
+    if (!self.settingsEnabled) return;
     UIDeviceBatteryState battery = UIDevice.currentDevice.batteryState;
     self.charging = (battery == UIDeviceBatteryStateCharging || battery == UIDeviceBatteryStateFull);
 
@@ -467,24 +536,197 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
         }
     }
 
-    NSDictionary *nowPlaying = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo;
-    NSNumber *rate = nowPlaying[MPNowPlayingInfoPropertyPlaybackRate];
-    self.mediaPlaying = (nowPlaying.count > 0 && rate.doubleValue > 0.0);
-    self.mediaTitle = nowPlaying[MPMediaItemPropertyTitle] ?: @"Now Playing";
-    MPMediaItemArtwork *artwork = nowPlaying[MPMediaItemPropertyArtwork];
-    self.mediaArtwork = [artwork isKindOfClass:MPMediaItemArtwork.class]
-        ? [artwork imageWithSize:CGSizeMake(48, 48)] : nil;
-
+    [self refreshMediaInformation];
     [self refreshEvents];
+}
+
+- (void)refreshMediaInformation {
+    if (!self.mediaEnabled) {
+        self.mediaPlaying = NO;
+        self.mediaTitle = nil;
+        self.mediaArtwork = nil;
+        [self refreshEvents];
+        return;
+    }
+
+    static void *mediaRemoteHandle = NULL;
+    typedef void (*DNMediaRemoteGetNowPlayingInfo)(dispatch_queue_t, void (^)(CFDictionaryRef));
+    typedef void (*DNMediaRemoteRegisterForNowPlayingNotifications)(dispatch_queue_t);
+    static DNMediaRemoteGetNowPlayingInfo getInfo = NULL;
+    static DNMediaRemoteRegisterForNowPlayingNotifications registerForNowPlaying = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        mediaRemoteHandle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY);
+        if (mediaRemoteHandle) {
+            getInfo = (DNMediaRemoteGetNowPlayingInfo)dlsym(mediaRemoteHandle, "MRMediaRemoteGetNowPlayingInfo");
+            registerForNowPlaying = (DNMediaRemoteRegisterForNowPlayingNotifications)dlsym(mediaRemoteHandle, "MRMediaRemoteRegisterForNowPlayingNotifications");
+            if (registerForNowPlaying) registerForNowPlaying(dispatch_get_main_queue());
+        }
+    });
+
+    if (getInfo && !self.mediaRequestInFlight) {
+        self.mediaRequestInFlight = YES;
+        NSUInteger requestGeneration = ++self.mediaRequestGeneration;
+        __weak typeof(self) weakSelf = self;
+        getInfo(dispatch_get_main_queue(), ^(CFDictionaryRef information) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self.mediaRequestGeneration != requestGeneration) return;
+            self.mediaRequestInFlight = NO;
+            NSDictionary *info = information ? [(__bridge NSDictionary *)information copy] : @{};
+            if (info.count == 0) {
+                [self refreshMediaFallback];
+                [self refreshEvents];
+                return;
+            }
+            NSNumber *rate = info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] ?: info[MPNowPlayingInfoPropertyPlaybackRate];
+            id titleValue = info[@"kMRMediaRemoteNowPlayingInfoTitle"] ?: info[MPMediaItemPropertyTitle] ?: info[@"title"];
+            id artistValue = info[@"kMRMediaRemoteNowPlayingInfoArtist"] ?: info[MPMediaItemPropertyArtist] ?: info[@"artist"];
+            NSString *title = [titleValue isKindOfClass:NSString.class] ? titleValue : nil;
+            NSString *artist = [artistValue isKindOfClass:NSString.class] ? artistValue : nil;
+            id artworkObject = info[@"kMRMediaRemoteNowPlayingInfoArtworkData"] ?: info[@"kMRMediaRemoteNowPlayingInfoArtwork"] ?: info[MPMediaItemPropertyArtwork];
+            UIImage *artwork = nil;
+            if ([artworkObject isKindOfClass:NSData.class]) artwork = [UIImage imageWithData:artworkObject];
+            else if ([artworkObject isKindOfClass:UIImage.class]) artwork = artworkObject;
+            else if ([artworkObject isKindOfClass:MPMediaItemArtwork.class]) artwork = [artworkObject imageWithSize:CGSizeMake(64, 64)];
+
+            self.mediaTitle = title.length ? (artist.length ? [NSString stringWithFormat:@"%@ — %@", title, artist] : title) : @"Now Playing";
+            self.mediaArtwork = artwork;
+            if (rate) self.mediaPlaying = rate.doubleValue > 0.0;
+            else [self refreshMediaFallback];
+            [self refreshEvents];
+        });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || !self.mediaRequestInFlight || self.mediaRequestGeneration != requestGeneration) return;
+            self.mediaRequestInFlight = NO;
+            [self refreshMediaFallback];
+            [self refreshEvents];
+        });
+        return;
+    }
+
+    // Fallback to SpringBoard's media controller on iOS builds where MediaRemote is unavailable.
+    [self refreshMediaFallback];
+}
+
+- (void)refreshMediaFallback {
+    Class mediaClass = NSClassFromString(@"SBMediaController");
+    id mediaController = nil;
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (mediaClass && [mediaClass respondsToSelector:shared]) {
+        mediaController = ((id (*)(id, SEL))objc_msgSend)(mediaClass, shared);
+    }
+
+    SEL isPlayingSelector = NSSelectorFromString(@"isPlaying");
+    if (mediaController && [mediaController respondsToSelector:isPlayingSelector]) {
+        self.mediaPlaying = ((BOOL (*)(id, SEL))objc_msgSend)(mediaController, isPlayingSelector);
+    }
+
+    NSDictionary *fallbackInfo = MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo;
+    SEL currentInfoSelector = NSSelectorFromString(@"currentNowPlayingInfo");
+    SEL nowPlayingInfoSelector = NSSelectorFromString(@"nowPlayingInfo");
+    if (mediaController && [mediaController respondsToSelector:currentInfoSelector]) {
+        id candidate = ((id (*)(id, SEL))objc_msgSend)(mediaController, currentInfoSelector);
+        if ([candidate isKindOfClass:NSDictionary.class] && [candidate count] > 0) fallbackInfo = candidate;
+    } else if (mediaController && [mediaController respondsToSelector:nowPlayingInfoSelector]) {
+        id candidate = ((id (*)(id, SEL))objc_msgSend)(mediaController, nowPlayingInfoSelector);
+        if ([candidate isKindOfClass:NSDictionary.class] && [candidate count] > 0) fallbackInfo = candidate;
+    }
+
+    id fallbackTitleValue = fallbackInfo[MPMediaItemPropertyTitle] ?: fallbackInfo[@"title"];
+    id fallbackArtistValue = fallbackInfo[MPMediaItemPropertyArtist] ?: fallbackInfo[@"artist"];
+    NSString *fallbackTitle = [fallbackTitleValue isKindOfClass:NSString.class] ? fallbackTitleValue : nil;
+    NSString *fallbackArtist = [fallbackArtistValue isKindOfClass:NSString.class] ? fallbackArtistValue : nil;
+
+    // Some iOS 15 SpringBoard builds expose metadata as individual selectors instead
+    // of a complete nowPlayingInfo dictionary.
+    if (fallbackTitle.length == 0 && mediaController) {
+        SEL titleSelector = NSSelectorFromString(@"nowPlayingTitle");
+        if ([mediaController respondsToSelector:titleSelector]) {
+            id value = ((id (*)(id, SEL))objc_msgSend)(mediaController, titleSelector);
+            if ([value isKindOfClass:NSString.class]) fallbackTitle = value;
+        }
+    }
+    if (fallbackArtist.length == 0 && mediaController) {
+        SEL artistSelector = NSSelectorFromString(@"nowPlayingArtist");
+        if ([mediaController respondsToSelector:artistSelector]) {
+            id value = ((id (*)(id, SEL))objc_msgSend)(mediaController, artistSelector);
+            if ([value isKindOfClass:NSString.class]) fallbackArtist = value;
+        }
+    }
+
+    if (fallbackTitle.length > 0 || fallbackArtist.length > 0) {
+        self.mediaTitle = fallbackTitle.length ? (fallbackArtist.length ? [NSString stringWithFormat:@"%@ — %@", fallbackTitle, fallbackArtist] : fallbackTitle) : fallbackArtist;
+        id artworkValue = fallbackInfo[MPMediaItemPropertyArtwork] ?: fallbackInfo[@"artwork"] ?: fallbackInfo[@"kMRMediaRemoteNowPlayingInfoArtworkData"];
+        if ([artworkValue isKindOfClass:MPMediaItemArtwork.class]) {
+            self.mediaArtwork = [(MPMediaItemArtwork *)artworkValue imageWithSize:CGSizeMake(64, 64)];
+        } else if ([artworkValue isKindOfClass:UIImage.class]) {
+            self.mediaArtwork = artworkValue;
+        } else if ([artworkValue isKindOfClass:NSData.class]) {
+            self.mediaArtwork = [UIImage imageWithData:artworkValue];
+        }
+        NSNumber *rate = fallbackInfo[MPNowPlayingInfoPropertyPlaybackRate] ?: fallbackInfo[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"];
+        if (rate) self.mediaPlaying = rate.doubleValue > 0.0;
+        else if (mediaController && [mediaController respondsToSelector:isPlayingSelector]) {
+            self.mediaPlaying = ((BOOL (*)(id, SEL))objc_msgSend)(mediaController, isPlayingSelector);
+        } else {
+            self.mediaPlaying = YES;
+        }
+    } else if (self.mediaPlaying) {
+        self.mediaTitle = @"Now Playing";
+        self.mediaArtwork = nil;
+    } else {
+        self.mediaTitle = nil;
+        self.mediaArtwork = nil;
+    }
+}
+
+- (void)reloadPreferences {
+    self.settingsEnabled = DNPreferenceBool(@"Enabled", YES);
+    self.sosGestureEnabled = DNPreferenceBool(@"EnableSOSGesture", YES);
+    self.moltenEffectEnabled = DNPreferenceBool(@"EnableMoltenEffect", YES);
+    self.greetingEnabled = DNPreferenceBool(@"EnableGreeting", YES);
+    self.emergencyTapCount = MAX(5, MIN(25, DNPreferenceInteger(@"EmergencyTapCount", 5)));
+    self.heatDuration = MAX(2.5, MIN(8.0, [DNPreferenceValue(@"HeatDuration", @4.5) doubleValue]));
+    self.mediaEnabled = DNPreferenceBool(@"EnableMediaPlayer", YES);
+    self.chargingEnabled = DNPreferenceBool(@"EnableCharging", YES);
+    self.accessoriesEnabled = DNPreferenceBool(@"EnableAccessories", YES);
+    self.callsEnabled = DNPreferenceBool(@"EnableCalls", YES);
+    self.silentEnabled = DNPreferenceBool(@"EnableSilentMode", YES);
+
+    id profile = DNReadPreferences()[kDNNotchProfileDefaultsKey];
+    self.configuredIslandProfile = profile ? [profile integerValue] : -1;
+    if (self.window && profile) {
+        BOOL newNarrow = ([profile integerValue] == -1)
+            ? DNHasNarrowNotch(self.hardwareModel)
+            : ([profile integerValue] == DNNotchProfileNarrow);
+        if (newNarrow != self.narrowNotch) {
+            self.narrowNotch = newNarrow;
+            CGRect screen = UIScreen.mainScreen.bounds;
+            self.expandedWidth = MIN(CGRectGetWidth(screen) - 24.0, self.narrowNotch ? 360.0 : 334.0);
+            [self setExpanded:self.expanded animated:YES];
+        }
+    }
+    if (self.window) {
+        if (!self.settingsEnabled) {
+            [self setExpanded:NO animated:YES];
+            self.window.hidden = YES;
+            [self setStatusBarAvoidanceExpanded:NO];
+            self.tapCount = 0;
+        } else {
+            self.window.hidden = NO;
+            [self refreshEvents];
+        }
+    }
 }
 
 - (NSArray<NSDictionary *> *)activeIndicators {
     NSMutableArray *items = [NSMutableArray array];
-    if (self.charging) [items addObject:@{@"priority": @(DNTriggerPriorityCharging), @"title": @"Charging", @"detail": @"Power connected", @"symbol": @"bolt.fill"}];
-    if (self.accessoryConnected) [items addObject:@{@"priority": @(DNTriggerPriorityAccessory), @"title": @"Accessory", @"detail": @"Audio device connected", @"symbol": @"headphones"}];
-    if (self.callActive) [items addObject:@{@"priority": @(DNTriggerPriorityCall), @"title": @"Call", @"detail": @"Active call", @"symbol": @"phone.fill"}];
-    if (self.silentActive) [items addObject:@{@"priority": @(DNTriggerPrioritySilent), @"title": @"Silent Mode", @"detail": @"Ringer muted", @"symbol": @"bell.slash.fill"}];
-    if (self.mediaPlaying) [items addObject:@{@"priority": @(DNTriggerPriorityMedia), @"title": self.mediaTitle ?: @"Media", @"detail": @"Playing", @"symbol": @"waveform"}];
+    if (self.chargingEnabled && self.charging) [items addObject:@{@"priority": @(DNTriggerPriorityCharging), @"title": @"Charging", @"detail": @"Power connected", @"symbol": @"bolt.fill"}];
+    if (self.accessoriesEnabled && self.accessoryConnected) [items addObject:@{@"priority": @(DNTriggerPriorityAccessory), @"title": @"Accessory", @"detail": @"Audio device connected", @"symbol": @"headphones"}];
+    if (self.callsEnabled && self.callActive) [items addObject:@{@"priority": @(DNTriggerPriorityCall), @"title": @"Call", @"detail": @"Active call", @"symbol": @"phone.fill"}];
+    if (self.silentEnabled && self.silentActive) [items addObject:@{@"priority": @(DNTriggerPrioritySilent), @"title": @"Silent Mode", @"detail": @"Ringer muted", @"symbol": @"bell.slash.fill"}];
+    if (self.mediaEnabled && self.mediaPlaying) [items addObject:@{@"priority": @(DNTriggerPriorityMedia), @"title": self.mediaTitle ?: @"Media", @"detail": @"Playing", @"symbol": @"waveform"}];
     [items sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
         return [b[@"priority"] compare:a[@"priority"]];
     }];
@@ -492,7 +734,7 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 }
 
 - (void)refreshEvents {
-    if (!self.notch) return;
+    if (!self.notch || !self.settingsEnabled || self.window.hidden) return;
     NSArray<NSDictionary *> *items = [self activeIndicators];
     if (items.count == 0) {
         self.notch.titleLabel.hidden = YES;
@@ -587,7 +829,7 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     [self setStatusBarAvoidanceExpanded:expanded];
 }
 
-#pragma mark - Virtual notch profile selection
+#pragma mark - Virtual island profile selection
 
 - (void)handleProfileTap:(UITapGestureRecognizer *)recognizer {
     if (!self.virtualNotch || recognizer.state != UIGestureRecognizerStateEnded) return;
@@ -599,15 +841,20 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     UIViewController *presented = self.window.rootViewController.presentedViewController;
     if (presented) return;
 
-    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Choose a Notch Style"
-                                                                     message:@"This iPhone does not have a physical notch, so DynamicNotch will display a virtual one. Choose a layout. You can change it later by tapping the notch with two fingers."
+    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Choose an Island Style"
+                                                                     message:@"This iPhone does not have a built-in Dynamic Island. Umn1Notch can display a virtual Dynamic Island. Change the island profile any time in Settings → Umn1Notch."
                                                               preferredStyle:UIAlertControllerStyleActionSheet];
-    [picker addAction:[UIAlertAction actionWithTitle:@"Wide — iPhone X–12"
+    [picker addAction:[UIAlertAction actionWithTitle:@"Use device default"
+                                               style:UIAlertActionStyleDefault
+                                             handler:^(UIAlertAction *action) {
+        [self setAutomaticIslandProfile];
+    }]];
+    [picker addAction:[UIAlertAction actionWithTitle:@"Wide Dynamic Island — iPhone X–12"
                                                style:UIAlertActionStyleDefault
                                              handler:^(UIAlertAction *action) {
         [self selectNotchProfile:DNNotchProfileWide];
     }]];
-    [picker addAction:[UIAlertAction actionWithTitle:@"Narrow — iPhone 13–14"
+    [picker addAction:[UIAlertAction actionWithTitle:@"Compact Dynamic Island — iPhone 13–14"
                                                style:UIAlertActionStyleDefault
                                              handler:^(UIAlertAction *action) {
         [self selectNotchProfile:DNNotchProfileNarrow];
@@ -625,7 +872,7 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 - (void)selectNotchProfile:(DNNotchProfile)profile {
     self.narrowNotch = (profile == DNNotchProfileNarrow);
     self.shouldShowProfilePicker = NO;
-    [NSUserDefaults.standardUserDefaults setInteger:profile forKey:kDNNotchProfileDefaultsKey];
+    DNWritePreference(kDNNotchProfileDefaultsKey, @(profile));
 
     CGRect screen = UIScreen.mainScreen.bounds;
     CGFloat collapsedWidth = self.narrowNotch ? 164.0 : 205.0;
@@ -644,18 +891,35 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
         [self.notch layoutIfNeeded];
         [self refreshHitRegion];
     }
-    [self.notch playGreetingWithColor:self.deviceColor];
+    if (self.greetingEnabled) [self.notch playGreetingWithColor:self.deviceColor];
 }
 
-#pragma mark - Five-tap demo
+- (void)setAutomaticIslandProfile {
+    DNWritePreference(kDNNotchProfileDefaultsKey, @(-1));
+    self.narrowNotch = DNHasNarrowNotch(self.hardwareModel);
+    CGRect screen = UIScreen.mainScreen.bounds;
+    CGFloat width = self.narrowNotch ? 360.0 : 334.0;
+    self.expandedWidth = MIN(CGRectGetWidth(screen) - 24.0, width);
+    CGFloat collapsedWidth = self.narrowNotch ? 164.0 : 205.0;
+    CGFloat collapsedHeight = self.narrowNotch ? 33.0 : 35.0;
+    [self setExpanded:self.expanded animated:YES];
+    if (!self.expanded) {
+        self.notch.layer.bounds = CGRectMake(0, 0, collapsedWidth, collapsedHeight);
+        self.notch.layer.position = CGPointMake(CGRectGetMidX(screen), collapsedHeight / 2.0);
+        self.notch.layer.cornerRadius = collapsedHeight / 2.0;
+        [self refreshHitRegion];
+    }
+}
+
+#pragma mark - Emergency tap confirmation
 
 - (void)handleTap:(UITapGestureRecognizer *)recognizer {
-    if (recognizer.state != UIGestureRecognizerStateEnded) return;
+    if (!self.sosGestureEnabled || recognizer.state != UIGestureRecognizerStateEnded) return;
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-    if (now - self.lastTapTime > 1.45) self.tapCount = 0;
+    if (now - self.lastTapTime > 3.0) self.tapCount = 0;
     self.lastTapTime = now;
     self.tapCount += 1;
-    if (self.tapCount >= 5) {
+    if (self.tapCount >= self.emergencyTapCount) {
         self.tapCount = 0;
         [self presentSOSDemo];
     }
@@ -665,18 +929,17 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [feedback prepare];
     [feedback impactOccurred];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Contact Emergency Services?"
-                                                                   message:@"This is a demo Easter egg. Confirming will not place a call. In a real emergency, use the iPhone Emergency SOS feature."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Call emergency services?"
+                                                                   message:@"Only continue in a genuine emergency. This action requires your confirmation and opens the phone interface."
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Demo Mode" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"Call 112" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         UIImpactFeedbackGenerator *confirm = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [confirm impactOccurred];
-        UIAlertController *info = [UIAlertController alertControllerWithTitle:@"DynamicNotch"
-                                                                      message:@"Demo mode activated. No phone call was placed."
-                                                               preferredStyle:UIAlertControllerStyleAlert];
-        [info addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [self.window.rootViewController presentViewController:info animated:YES completion:nil];
+        NSURL *phoneURL = [NSURL URLWithString:@"tel://112"];
+        if ([UIApplication.sharedApplication canOpenURL:phoneURL]) {
+            [UIApplication.sharedApplication openURL:phoneURL options:@{} completionHandler:nil];
+        }
     }]];
     [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
@@ -684,61 +947,142 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 #pragma mark - Long-press sequence and decorative burst
 
 - (void)handleHold:(UILongPressGestureRecognizer *)recognizer {
+    if (!self.moltenEffectEnabled) return;
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         self.holdActive = YES;
         self.detonationFinished = NO;
-        self.holdPhase = 0;
         [self beginHoldSequence];
     } else if (recognizer.state == UIGestureRecognizerStateEnded ||
                recognizer.state == UIGestureRecognizerStateCancelled ||
                recognizer.state == UIGestureRecognizerStateFailed) {
         self.holdActive = NO;
         if (!self.detonationFinished) {
-            [self.notch applyTriggerColor:UIColor.blackColor];
+            [self.notch.layer removeAnimationForKey:@"umn1.heat.color"];
+            [self.notch.layer removeAnimationForKey:@"umn1.heat.glow"];
+            [self.notch.layer removeAnimationForKey:@"umn1.heat.glowColor"];
+            [self.notch.layer removeAnimationForKey:@"umn1.heat.glowOpacity"];
+            [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+                self.notch.backgroundColor = UIColor.blackColor;
+                self.notch.layer.shadowOpacity = 0;
+                self.notch.layer.shadowRadius = 0;
+            } completion:nil];
         }
     }
 }
 
 - (void)beginHoldSequence {
-    NSArray<UIColor *> *phases = @[
-        UIColor.blackColor,
-        [UIColor colorWithRed:0.82 green:0.04 blue:0.07 alpha:1],
-        [UIColor colorWithRed:0.04 green:0.22 blue:0.95 alpha:1],
+    // Continuous blackbody-style heating: charcoal -> deep red -> orange -> yellow -> white-hot.
+    NSArray<UIColor *> *heatColors = @[
+        [UIColor colorWithWhite:0.015 alpha:1],
+        [UIColor colorWithRed:0.24 green:0.005 blue:0.008 alpha:1],
+        [UIColor colorWithRed:0.68 green:0.025 blue:0.008 alpha:1],
+        [UIColor colorWithRed:1.0 green:0.19 blue:0.015 alpha:1],
+        [UIColor colorWithRed:1.0 green:0.66 blue:0.12 alpha:1],
+        [UIColor colorWithRed:1.0 green:0.96 blue:0.78 alpha:1],
         UIColor.whiteColor
     ];
+    NSMutableArray *cgColors = [NSMutableArray array];
+    for (UIColor *color in heatColors) [cgColors addObject:(id)color.CGColor];
+
+    self.notch.backgroundColor = heatColors.firstObject;
+    self.notch.layer.shadowColor = [UIColor colorWithRed:1 green:0.20 blue:0.015 alpha:1].CGColor;
+    self.notch.layer.shadowOffset = CGSizeZero;
+    self.notch.layer.shadowOpacity = 0.15;
+    self.notch.layer.shadowRadius = 2;
+
+    CAKeyframeAnimation *heat = [CAKeyframeAnimation animationWithKeyPath:@"backgroundColor"];
+    heat.values = cgColors;
+    heat.keyTimes = @[@0.0, @0.12, @0.30, @0.49, @0.68, @0.87, @1.0];
+    heat.duration = self.heatDuration;
+    heat.calculationMode = kCAAnimationLinear;
+    heat.fillMode = kCAFillModeForwards;
+    heat.removedOnCompletion = NO;
+    [self.notch.layer addAnimation:heat forKey:@"umn1.heat.color"];
+
+    CAKeyframeAnimation *glow = [CAKeyframeAnimation animationWithKeyPath:@"shadowRadius"];
+    glow.values = @[@2, @4, @8, @13, @19, @25];
+    glow.keyTimes = @[@0.0, @0.18, @0.38, @0.58, @0.80, @1.0];
+    glow.duration = self.heatDuration;
+    glow.fillMode = kCAFillModeForwards;
+    glow.removedOnCompletion = NO;
+    [self.notch.layer addAnimation:glow forKey:@"umn1.heat.glow"];
+
+    CAKeyframeAnimation *glowColor = [CAKeyframeAnimation animationWithKeyPath:@"shadowColor"];
+    glowColor.values = @[
+        (id)[UIColor colorWithRed:0.18 green:0.005 blue:0.01 alpha:1].CGColor,
+        (id)[UIColor colorWithRed:0.75 green:0.025 blue:0.008 alpha:1].CGColor,
+        (id)[UIColor colorWithRed:1.0 green:0.25 blue:0.015 alpha:1].CGColor,
+        (id)[UIColor colorWithRed:1.0 green:0.78 blue:0.35 alpha:1].CGColor,
+        (id)UIColor.whiteColor.CGColor
+    ];
+    glowColor.keyTimes = @[@0.0, @0.30, @0.55, @0.82, @1.0];
+    glowColor.duration = self.heatDuration;
+    glowColor.fillMode = kCAFillModeForwards;
+    glowColor.removedOnCompletion = NO;
+    [self.notch.layer addAnimation:glowColor forKey:@"umn1.heat.glowColor"];
+
+    CAKeyframeAnimation *glowOpacity = [CAKeyframeAnimation animationWithKeyPath:@"shadowOpacity"];
+    glowOpacity.values = @[@0.12, @0.28, @0.48, @0.72, @0.95];
+    glowOpacity.keyTimes = @[@0.0, @0.22, @0.48, @0.75, @1.0];
+    glowOpacity.duration = self.heatDuration;
+    glowOpacity.fillMode = kCAFillModeForwards;
+    glowOpacity.removedOnCompletion = NO;
+    [self.notch.layer addAnimation:glowOpacity forKey:@"umn1.heat.glowOpacity"];
+
     __weak typeof(self) weakSelf = self;
-    __block void (^advance)(void);
-    advance = ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.heatDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || !self.holdActive || self.detonationFinished) { advance = nil; return; }
-        if (self.holdPhase < 3) {
-            self.holdPhase += 1;
-            [UIView animateWithDuration:0.58 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-                [self.notch applyTriggerColor:phases[self.holdPhase]];
-            } completion:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.66 * NSEC_PER_SEC)), dispatch_get_main_queue(), advance);
-        } else {
-            self.detonationFinished = YES;
-            self.holdActive = NO;
-            UIImpactFeedbackGenerator *impact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
-            [impact prepare];
-            [impact impactOccurred];
-            [self showDecorativeBurst];
-            advance = nil;
-        }
-    };
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.66 * NSEC_PER_SEC)), dispatch_get_main_queue(), advance);
+        if (!self || !self.holdActive || self.detonationFinished) return;
+        self.detonationFinished = YES;
+        self.holdActive = NO;
+        self.notch.backgroundColor = UIColor.whiteColor;
+        UIImpactFeedbackGenerator *impact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+        [impact prepare];
+        [impact impactOccurred];
+        [self showDecorativeBurst];
+    });
 }
 
 - (UIImage *)particleImage {
-    CGSize size = CGSizeMake(28, 28);
+    CGSize size = CGSizeMake(34, 52);
     UIGraphicsBeginImageContextWithOptions(size, NO, 0);
     CGContextRef context = UIGraphicsGetCurrentContext();
-    CGRect circle = CGRectMake(2, 2, 24, 24);
-    CGContextSetFillColorWithColor(context, [UIColor colorWithRed:0.72 green:0.015 blue:0.035 alpha:1].CGColor);
-    CGContextFillEllipseInRect(context, circle);
-    CGContextSetFillColorWithColor(context, [UIColor colorWithRed:1 green:0.45 blue:0.43 alpha:0.9].CGColor);
-    CGContextFillEllipseInRect(context, CGRectMake(7, 5, 8, 5));
+    CGRect shape = CGRectMake(7, 3, 20, 46);
+    UIBezierPath *drop = [UIBezierPath bezierPath];
+    [drop moveToPoint:CGPointMake(CGRectGetMidX(shape), CGRectGetMinY(shape))];
+    [drop addCurveToPoint:CGPointMake(CGRectGetMaxX(shape), CGRectGetMidY(shape))
+            controlPoint1:CGPointMake(CGRectGetMaxX(shape), CGRectGetMinY(shape) + 5)
+            controlPoint2:CGPointMake(CGRectGetMaxX(shape), CGRectGetMidY(shape) - 8)];
+    [drop addCurveToPoint:CGPointMake(CGRectGetMinX(shape), CGRectGetMidY(shape))
+            controlPoint1:CGPointMake(CGRectGetMaxX(shape) - 3, CGRectGetMaxY(shape))
+            controlPoint2:CGPointMake(CGRectGetMinX(shape), CGRectGetMidY(shape) + 8)];
+    [drop addCurveToPoint:CGPointMake(CGRectGetMidX(shape), CGRectGetMinY(shape))
+            controlPoint1:CGPointMake(CGRectGetMinX(shape), CGRectGetMinY(shape) + 5)
+            controlPoint2:CGPointMake(CGRectGetMidX(shape), CGRectGetMinY(shape))];
+    [drop closePath];
+
+    CGContextSaveGState(context);
+    [drop addClip];
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGFloat components[] = {
+        0.18, 0.015, 0.012, 1,
+        0.95, 0.055, 0.018, 1,
+        1.0, 0.34, 0.12, 1,
+        0.46, 0.012, 0.018, 1
+    };
+    CGFloat locations[] = {0, 0.38, 0.62, 1};
+    CGGradientRef gradient = CGGradientCreateWithColorComponents(space, components, locations, 4);
+    CGContextDrawLinearGradient(context, gradient, CGPointMake(0, 0), CGPointMake(size.width, size.height), 0);
+    CGGradientRelease(gradient);
+    CGColorSpaceRelease(space);
+    CGContextRestoreGState(context);
+
+    CGContextSetStrokeColorWithColor(context, [UIColor colorWithWhite:1 alpha:0.88].CGColor);
+    CGContextSetLineWidth(context, 2.0);
+    CGContextMoveToPoint(context, 15, 12);
+    CGContextAddCurveToPoint(context, 11, 20, 12, 29, 15, 36);
+    CGContextStrokePath(context);
+
     UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return image;
@@ -755,35 +1099,92 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
     burstWindow.hidden = NO;
     self.explosionWindow = burstWindow;
 
+    // A soft flash and a plume of stylized molten-metal droplets erupt from the island.
+    UIView *flash = [[UIView alloc] initWithFrame:root.view.bounds];
+    flash.userInteractionEnabled = NO;
+    flash.backgroundColor = [UIColor colorWithRed:0.55 green:0.015 blue:0.018 alpha:0.16];
+    flash.alpha = 0;
+    [root.view addSubview:flash];
+    [UIView animateWithDuration:0.12 animations:^{ flash.alpha = 1.0; } completion:^(BOOL finished) {
+        [UIView animateWithDuration:0.75 animations:^{ flash.alpha = 0.0; }];
+    }];
+
     CAEmitterLayer *emitter = [CAEmitterLayer layer];
     emitter.frame = root.view.bounds;
-    emitter.emitterPosition = CGPointMake(CGRectGetMidX(screen), CGRectGetMidY(screen));
-    emitter.emitterShape = kCAEmitterLayerPoint;
-    emitter.emitterMode = kCAEmitterLayerPoints;
+    emitter.emitterPosition = CGPointMake(CGRectGetMidX(screen), CGRectGetMinY(self.notch.frame) + CGRectGetHeight(self.notch.frame) + 3.0);
+    emitter.emitterShape = kCAEmitterLayerLine;
+    emitter.emitterMode = kCAEmitterLayerSurface;
+    emitter.emitterSize = CGSizeMake(MIN(CGRectGetWidth(screen) * 0.72, CGRectGetWidth(self.notch.bounds) * 1.25), 2.0);
     emitter.renderMode = kCAEmitterLayerOldestFirst;
 
-    CAEmitterCell *cell = [CAEmitterCell emitterCell];
-    cell.contents = (id)[self particleImage].CGImage;
-    cell.birthRate = 210;
-    cell.lifetime = 0.28;
-    cell.lifetimeRange = 0.04;
-    cell.velocity = 620;
-    cell.velocityRange = 260;
-    cell.emissionRange = (CGFloat)(M_PI * 2.0);
-    cell.scale = 0.48;
-    cell.scaleRange = 0.42;
-    cell.spinRange = 5.5;
-    cell.alphaSpeed = -1.7;
-    cell.color = [UIColor colorWithRed:0.85 green:0.02 blue:0.04 alpha:1].CGColor;
-    emitter.emitterCells = @[cell];
+    CAEmitterCell *molten = [CAEmitterCell emitterCell];
+    molten.name = @"molten-metal";
+    molten.contents = (id)[self particleImage].CGImage;
+    molten.birthRate = 360;
+    molten.lifetime = 1.25;
+    molten.lifetimeRange = 0.35;
+    molten.velocity = 700;
+    molten.velocityRange = 470;
+    molten.emissionLongitude = (CGFloat)M_PI_2;
+    molten.emissionRange = (CGFloat)(M_PI * 0.52);
+    molten.xAcceleration = 0;
+    molten.yAcceleration = 880;
+    molten.scale = 0.30;
+    molten.scaleRange = 0.24;
+    molten.scaleSpeed = -0.08;
+    molten.spin = 0.8;
+    molten.spinRange = 5.5;
+    molten.alphaSpeed = -0.58;
+
+    CAEmitterCell *brightCore = [CAEmitterCell emitterCell];
+    brightCore.name = @"hot-core";
+    brightCore.contents = (id)[self particleImage].CGImage;
+    brightCore.birthRate = 150;
+    brightCore.lifetime = 0.82;
+    brightCore.lifetimeRange = 0.20;
+    brightCore.velocity = 520;
+    brightCore.velocityRange = 330;
+    brightCore.emissionLongitude = (CGFloat)M_PI_2;
+    brightCore.emissionRange = (CGFloat)(M_PI * 0.45);
+    brightCore.yAcceleration = 720;
+    brightCore.scale = 0.18;
+    brightCore.scaleRange = 0.16;
+    brightCore.alphaSpeed = -0.9;
+    brightCore.color = [UIColor colorWithRed:1 green:0.58 blue:0.28 alpha:1].CGColor;
+
+    CAEmitterCell *smallSplashes = [CAEmitterCell emitterCell];
+    smallSplashes.name = @"small-splashes";
+    smallSplashes.contents = (id)[self particleImage].CGImage;
+    smallSplashes.birthRate = 95;
+    smallSplashes.lifetime = 1.45;
+    smallSplashes.lifetimeRange = 0.3;
+    smallSplashes.velocity = 260;
+    smallSplashes.velocityRange = 240;
+    smallSplashes.emissionLongitude = (CGFloat)M_PI_2;
+    smallSplashes.emissionRange = (CGFloat)(M_PI * 0.92);
+    smallSplashes.yAcceleration = 620;
+    smallSplashes.scale = 0.12;
+    smallSplashes.scaleRange = 0.16;
+    smallSplashes.alphaSpeed = -0.48;
+
+    emitter.emitterCells = @[molten, brightCore, smallSplashes];
     [root.view.layer addSublayer:emitter];
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    [self.notch.layer removeAnimationForKey:@"umn1.heat.color"];
+    [self.notch.layer removeAnimationForKey:@"umn1.heat.glow"];
+    [self.notch.layer removeAnimationForKey:@"umn1.heat.glowColor"];
+    [self.notch.layer removeAnimationForKey:@"umn1.heat.glowOpacity"];
+    self.notch.backgroundColor = UIColor.blackColor;
+    self.notch.layer.shadowOpacity = 0;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        emitter.birthRate = 0;
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.75 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [emitter removeFromSuperlayer];
         burstWindow.hidden = YES;
         self.explosionWindow = nil;
-        [self.notch applyTriggerColor:UIColor.blackColor];
-        [self setExpanded:(self.activeIndicators.count > 0) animated:YES];
+        [self refreshEvents];
     });
 }
 
@@ -843,6 +1244,30 @@ typedef NS_ENUM(NSInteger, DNTriggerPriority) {
 }
 
 @end
+
+
+static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                                          const void *object, CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DNController *controller = [DNController shared];
+        if (!controller.settingsEnabled || !controller.window || controller.window.hidden) return;
+        [controller refreshMediaInformation];
+    });
+}
+
+static void DNPreferencesChangedCallback(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                                         const void *object, CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DNController *controller = [DNController shared];
+        [controller reloadPreferences];
+        if (controller.settingsEnabled && !controller.window) {
+            [controller start];
+        } else {
+            [controller refreshMediaInformation];
+            [controller refreshEvents];
+        }
+    });
+}
 
 #pragma mark - Runtime status-bar layout helpers
 

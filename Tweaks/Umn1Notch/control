@@ -1,0 +1,10 @@
+Package: com.umn1notch.tweak
+Name: Umn1Notch
+Version: 0.4.1
+Architecture: iphoneos-arm64
+Description: A configurable Dynamic Island overlay with media, event indicators and visual effects.
+Maintainer: Umn1Chelovek
+Author: Umn1Chelovek
+Section: Tweaks
+Depends: firmware (>= 15.0), preferenceloader
+Icon: https://umn1chelovek.github.io/umn1notch/icons/umn1notch.png

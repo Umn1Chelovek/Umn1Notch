@@ -1,0 +1,8 @@
+#import <UIKit/UIKit.h>
+
+%hook SpringBoard
+- (void)applicationDidFinishLaunching:(id)application {
+    %orig;
+    NSLog(@"[ExampleTweak] Loaded");
+}
+%end

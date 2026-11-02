@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.png binary
+*.deb binary
+*.dylib binary
+*.zip binary

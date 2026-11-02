@@ -1,0 +1,10 @@
+.DS_Store
+.theos/
+**/.theos/
+packages/
+**/packages/
+.build/
+dist-debs/
+_site/
+.downloaded-debs/
+*.dSYM/

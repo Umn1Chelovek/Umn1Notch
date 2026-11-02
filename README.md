@@ -1,45 +1,78 @@
-# DynamicNotch
+# Umn1Notch Repository
 
-Current package version: **0.3.1**.
+A multi-package rootless iOS tweak repository maintained by **Umn1Chelovek**.
 
-Theos tweak prototype for SpringBoard. On iPhones with a physical notch it uses the detected device profile; on supported notchless iPhones it can display a configurable virtual notch.
+- Sileo source: `https://umn1chelovek.github.io/umn1notch/`
+- GitHub repository: `https://github.com/Umn1Chelovek/umn1notch`
+- Main package: `com.umn1notch.tweak` (`Umn1Notch`)
+- Package version in this snapshot: `0.4.1`
+- Package architecture: `iphoneos-arm64`
+- Declared minimum firmware: iOS 15.0
 
-## Language
+> Experimental project. A successful build only confirms compilation and packaging. It does not guarantee compatibility with every jailbreak bootstrap, iOS release, or private SpringBoard API. Test on a device that can be recovered and where the package can be removed.
 
-- All DynamicNotch interface strings are in English.
-- The project documentation and package metadata are also written in English.
-- Media titles and metadata are supplied by the currently playing app and are displayed as provided by that app.
+## Repository layout
 
-## Build target
+```text
+umn1notch/
+├── .github/workflows/main.yml
+├── Tweaks/
+│   ├── Umn1Notch/              # Complete Theos project
+│   ├── _ExampleTweak/          # Non-building starter template
+│   └── README.md
+├── assets/
+│   ├── CydiaIcon.png           # Sileo source icon
+│   └── icons/umn1notch.png     # Main package icon
+├── docs/
+├── .editorconfig
+├── .gitattributes
+├── .gitignore
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── README.md
+└── SECURITY.md
+```
 
-- One package only: **rootless** (`iphoneos-arm64`).
-- Deployment target: **iOS 15.0 and newer**; there is no upper firmware limit in the package metadata.
-- Architectures: `arm64`, `arm64e`.
-- GitHub Actions builds one `.deb` and uploads it as the `DynamicNotch-rootless-deb` workflow artifact.
+There is intentionally no `Makefile` or `control` in the repository root. **Umn1Notch itself lives at `Tweaks/Umn1Notch/`**, alongside future projects.
 
-The official Theos rootless scheme supports iOS 15 and later. iOS 14 is intentionally not included in this single rootless package; supporting iOS 14 would require a separate rootful build or a different jailbreak-specific packaging approach.
+## Publish with GitHub Pages
 
-## Compatibility notes
+1. Open repository **Settings → Pages**.
+2. Set **Build and deployment → Source** to **GitHub Actions**.
+3. Keep the workflow at `.github/workflows/main.yml`.
+4. Push a commit to `main` or run the workflow manually from the Actions tab.
+5. Wait for both `Build all Theos tweaks` and `Publish Sileo APT Repository` to succeed.
 
-The deployment target means the package is eligible for installation on iOS 15.0 and later. It does **not** guarantee that every private SpringBoard hook will work unchanged on every future iOS release. In particular, iOS 27.0.1 support must be validated against the actual jailbreak/bootstrap, SDK/toolchain and SpringBoard build available for that firmware.
+Sileo source URL:
 
-## Virtual notch on older iPhones
+```text
+https://umn1chelovek.github.io/umn1notch/
+```
 
-- iPhone 7/7 Plus, iPhone 8/8 Plus, iPhone 6s/6s Plus and the original iPhone SE use a virtual notch because they have no physical notch.
-- The first launch presents a selector: **Wide — iPhone X–12** or **Narrow — iPhone 13–14**.
-- The selection is saved in SpringBoard preferences and persists across resprings/reboots.
-- To reopen the selector, tap the virtual notch with **two fingers at the same time**.
-- iPhone SE (2nd/3rd generation) are also treated as notchless devices and can use the selector.
-- The package still requires iOS 15.0+. iPhone 6 and earlier cannot install this package because they cannot run iOS 15; listing their hardware identifiers in the detector does not make them supported.
+The workflow builds each direct child of `Tweaks/` that contains both `Makefile` and `control`, validates unique package IDs and `iphoneos-arm64`, creates `Packages`, `Packages.gz`, and a checksummed `Release` file, then deploys the repository to GitHub Pages.
 
-## Implementation notes
+The repository currently uses an unsigned `Release` file. For a larger public repository, add APT/GPG signing before distributing packages broadly.
 
-- Device model is read from `hw.machine` using `sysctlbyname`.
-- Enclosure colour is queried dynamically through `MGCopyAnswer` when MobileGestalt is present; unknown values fall back to a neutral colour.
-- Charging, audio-route accessories, call state and media playback are observed through system frameworks.
-- Silent-switch detection is best-effort and depends on a private selector being available.
-- Status-bar layout uses runtime hooks against private classes. Apple can change these classes between releases, so offsets must be tested on each target OS build.
-- Five taps open a confirmation dialog for a harmless demo; the tweak does not dial emergency services.
-- The long-press action creates a decorative, short-lived particle burst in the UI only.
+## Add another tweak
 
-This is a starting implementation, not a claim of universal compatibility with every SpringBoard build or jailbreak bootstrap. Test on a spare device and keep a way to disable/uninstall the tweak if SpringBoard enters a restart loop.
+Create `Tweaks/YourTweak/` as a self-contained Theos project. It must include its own `Makefile` and `control`; the workflow will then build and publish its `.deb` automatically. See `Tweaks/_ExampleTweak/README.md` and `CONTRIBUTING.md`.
+
+Every package must use a unique Debian `Package:` identifier and target rootless `iphoneos-arm64`. Do not place compiled `.deb` files in the source tree; the workflow collects them from each Theos project's `packages/` directory.
+
+## Icons
+
+- Repository/source icon: `assets/CydiaIcon.png`
+- Package icon: `assets/icons/umn1notch.png`
+- Umn1Notch's `control` file contains the HTTPS package icon URL.
+
+To replace either icon, overwrite the corresponding PNG and push the change. Sileo may cache artwork; refresh the source if the new image does not appear immediately.
+
+## Local build (macOS/Linux with Theos)
+
+```sh
+cd Tweaks/Umn1Notch
+make clean
+make package FINALPACKAGE=1
+```
+
+Windows users can edit the repository with GitHub Desktop or another Git client; GitHub Actions performs the Theos build on a hosted macOS runner.

@@ -1,0 +1,9 @@
+Package: com.example.tweak
+Name: ExampleTweak
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Replace this description with a short summary.
+Maintainer: Umn1Chelovek
+Author: Umn1Chelovek
+Section: Tweaks
+Depends: firmware (>= 15.0)

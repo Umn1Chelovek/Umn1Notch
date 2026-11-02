@@ -1,9 +1,0 @@
-Package: com.umn1notch.tweak
-Name: Umn1Notch
-Version: 0.3.1
-Architecture: iphoneos-arm64
-Description: Adaptive physical and virtual notch overlay for iPhones (rootless).
-Maintainer: DynamicNotch Project
-Author: Umn1Chelovek
-Section: Tweaks
-Depends: firmware (>= 15.0)

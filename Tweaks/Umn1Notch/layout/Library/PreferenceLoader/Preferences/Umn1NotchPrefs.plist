@@ -1,0 +1,10 @@
+{
+    entry = {
+        bundle = "Umn1NotchPrefs";
+        cell = PSLinkCell;
+        detail = "Umn1NotchRootListController";
+        isController = 1;
+        label = "Umn1Notch";
+        name = "Umn1Notch";
+    };
+}
