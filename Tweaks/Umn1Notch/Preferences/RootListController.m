@@ -66,3 +66,4 @@ static CFStringRef const kUmn1NotchPrefsChanged = CFSTR("com.umn1notch.preferenc
 }
 
 @end
+ 
