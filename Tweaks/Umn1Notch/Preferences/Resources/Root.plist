@@ -2,327 +2,358 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>title</key>
-	<string>Umn1Notch</string>
-	<key>entry</key>
-	<dict>
-		<key>cell</key>
-		<string>PSLinkCell</string>
-		<key>label</key>
-		<string>Umn1Notch</string>
-		<key>detail</key>
-		<string>Umn1NotchRootListController</string>
-	</dict>
-	<key>items</key>
-	<array>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Umn1Notch</string>
-			<key>footerText</key>
-			<string>Configure the top-attached notch. Changes apply immediately where supported.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Enable Umn1Notch</string>
-			<key>key</key>
-			<string>Enabled</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Emergency gesture</string>
-			<key>key</key>
-			<string>EnableSOSGesture</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Notch appearance</string>
-			<key>footerText</key>
-			<string>The virtual notch is anchored to the top edge. Wide models use the iPhone X–12 profile; Compact models use the iPhone 13–14 profile.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSegmentCell</string>
-			<key>label</key>
-			<string>Notch style</string>
-			<key>key</key>
-			<string>IslandProfile</string>
-			<key>default</key>
-			<integer>-1</integer>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>titles</key>
-			<array>
-				<string>Auto</string>
-				<string>Wide</string>
-				<string>Compact</string>
-			</array>
-			<key>values</key>
-			<array>
-				<integer>-1</integer>
-				<integer>0</integer>
-				<integer>1</integer>
-			</array>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Event indicators</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Music player</string>
-			<key>key</key>
-			<string>EnableMediaPlayer</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Charging indicator</string>
-			<key>key</key>
-			<string>EnableCharging</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Audio accessories</string>
-			<key>key</key>
-			<string>EnableAccessories</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Calls</string>
-			<key>key</key>
-			<string>EnableCalls</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Silent mode</string>
-			<key>key</key>
-			<string>EnableSilentMode</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Silent-mode animation</string>
-			<key>key</key>
-			<string>EnableSilentAnimation</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>App compatibility</string>
-			<key>footerText</key>
-			<string>The notch hides in Camera and in landscape orientation. The overlay passes touches through outside its visible area.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Hide in Camera</string>
-			<key>key</key>
-			<string>HideInCamera</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Easter eggs</string>
-			<key>footerText</key>
-			<string>Easter eggs are disabled while any system event is active. SOS always requires explicit confirmation before opening the emergency call screen.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Enable Easter eggs</string>
-			<key>key</key>
-			<string>EnableEasterEggs</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Explosion sound</string>
-			<key>key</key>
-			<string>EnableExplosionSound</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Visual effects</string>
-			<key>footerText</key>
-			<string>Visual effects are decorative and do not affect device hardware.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Molten metal hold effect</string>
-			<key>key</key>
-			<string>EnableMoltenEffect</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>label</key>
-			<string>Startup glow animation</string>
-			<key>key</key>
-			<string>EnableGreeting</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>Gestures</string>
-			<key>footerText</key>
-			<string>Tap the notch 5–25 times within 3 seconds while no other system trigger is active. A confirmation is always required before the emergency call screen opens.</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>label</key>
-			<string>Emergency gesture taps</string>
-			<key>key</key>
-			<string>EmergencyTapCount</string>
-			<key>default</key>
-			<integer>5</integer>
-			<key>min</key>
-			<real>5.0</real>
-			<key>max</key>
-			<real>25.0</real>
-			<key>showValue</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>label</key>
-			<string>Metal heating duration (seconds)</string>
-			<key>key</key>
-			<string>HeatDuration</string>
-			<key>default</key>
-			<real>4.5</real>
-			<key>min</key>
-			<real>2.5</real>
-			<key>max</key>
-			<real>8.0</real>
-			<key>showValue</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.umn1notch.preferences</string>
-			<key>PostNotification</key>
-			<string>com.umn1notch.preferences/Reload</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>Umn1Notch 0.5.0 — experimental rootless tweak for iOS 15 and newer.</string>
-		</dict>
-	</array>
+    <key>title</key>
+    <string>Umn1Notch</string>
+
+    <key>entry</key>
+    <dict>
+        <key>cell</key>
+        <string>PSLinkCell</string>
+        <key>label</key>
+        <string>Umn1Notch</string>
+        <key>detail</key>
+        <string>Umn1NotchRootListController</string>
+    </dict>
+
+    <key>items</key>
+    <array>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Umn1Notch</string>
+            <key>footerText</key>
+            <string>Experimental top-attached notch interface for supported iPhones. Some system integrations depend on private iOS interfaces.</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Enable Umn1Notch</string>
+            <key>key</key>
+            <string>Enabled</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Appearance</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSegmentCell</string>
+            <key>label</key>
+            <string>Notch profile</string>
+            <key>key</key>
+            <string>IslandProfile</string>
+            <key>default</key>
+            <integer>-1</integer>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>titles</key>
+            <array>
+                <string>Auto</string>
+                <string>Wide</string>
+                <string>Compact</string>
+            </array>
+            <key>values</key>
+            <array>
+                <integer>-1</integer>
+                <integer>0</integer>
+                <integer>1</integer>
+            </array>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Music</string>
+            <key>footerText</key>
+            <string>The visualizer is a decorative animation. It does not display measured audio amplitude.</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Music player</string>
+            <key>key</key>
+            <string>EnableMediaPlayer</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Animated visualizer</string>
+            <key>key</key>
+            <string>EnableVisualizer</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>System indicators</string>
+            <key>footerText</key>
+            <string>System indicators are displayed temporarily when their corresponding event is detected.</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Charging</string>
+            <key>key</key>
+            <string>EnableCharging</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Audio accessories</string>
+            <key>key</key>
+            <string>EnableAccessories</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Calls</string>
+            <key>key</key>
+            <string>EnableCalls</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Silent mode</string>
+            <key>key</key>
+            <string>EnableSilentMode</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>App compatibility</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Hide in Camera</string>
+            <key>key</key>
+            <string>HideInCamera</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Hide in landscape orientation</string>
+            <key>key</key>
+            <string>HideInLandscape</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Easter eggs</string>
+            <key>footerText</key>
+            <string>Easter eggs are unavailable while a system event is active. The emergency gesture always requires explicit confirmation. It never places a call automatically.</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Enable Easter eggs</string>
+            <key>key</key>
+            <string>EnableEasterEggs</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Emergency gesture</string>
+            <key>key</key>
+            <string>EnableSOSGesture</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>label</key>
+            <string>Emergency gesture taps</string>
+            <key>key</key>
+            <string>EmergencyTapCount</string>
+            <key>default</key>
+            <integer>5</integer>
+            <key>min</key>
+            <real>5.0</real>
+            <key>max</key>
+            <real>25.0</real>
+            <key>showValue</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Molten-metal effect</string>
+            <key>key</key>
+            <string>EnableMoltenEffect</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>label</key>
+            <string>Heating duration</string>
+            <key>key</key>
+            <string>HeatDuration</string>
+            <key>default</key>
+            <real>4.5</real>
+            <key>min</key>
+            <real>2.5</real>
+            <key>max</key>
+            <real>8.0</real>
+            <key>showValue</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Molten-metal sound</string>
+            <key>key</key>
+            <string>EnableExplosionSound</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>Startup animation</string>
+            <key>key</key>
+            <string>EnableGreeting</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.umn1notch.preferences</string>
+            <key>PostNotification</key>
+            <string>com.umn1notch.preferences/Reload</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>footerText</key>
+            <string>Umn1Notch 0.6.0 — experimental rootless tweak for iOS 15 and newer.</string>
+        </dict>
+
+    </array>
 </dict>
 </plist>
