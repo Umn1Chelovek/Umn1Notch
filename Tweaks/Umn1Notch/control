@@ -1,8 +1,8 @@
 Package: com.umn1notch.tweak
 Name: Umn1Notch
-Version: 0.5.0
+Version: 0.6.0
 Architecture: iphoneos-arm64
-Description: A top-attached dynamic notch with media, system event indicators, preferences and visual effects.
+Description: A rootless top-attached notch interface with media controls, system event indicators, visual effects and configurable preferences.
 Maintainer: Umn1Chelovek
 Author: Umn1Chelovek
 Section: Tweaks
