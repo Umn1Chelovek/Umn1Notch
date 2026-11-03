@@ -63,7 +63,6 @@ static id DNPreferenceValue(NSString *key, id fallback) {
 
 static BOOL DNPreferenceBool(NSString *key, BOOL fallback) {
     id value = DNPreferenceValue(key, @(fallback));
-
     return [value respondsToSelector:@selector(boolValue)] ?
         [value boolValue] : fallback;
 }
@@ -77,7 +76,6 @@ static NSInteger DNPreferenceInteger(NSString *key, NSInteger fallback) {
 
 static CGFloat DNPreferenceFloat(NSString *key, CGFloat fallback) {
     id value = DNPreferenceValue(key, @(fallback));
-
     return [value respondsToSelector:@selector(doubleValue)] ?
         [value doubleValue] : fallback;
 }
@@ -198,7 +196,6 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
 @property(nonatomic, strong) UIImageView *artworkView;
 @property(nonatomic, strong) UIImageView *compactArtworkView;
 @property(nonatomic, strong) NSMutableArray<UIView *> *visualizerBars;
-
 @property(nonatomic, assign) DNDisplayMode displayMode;
 
 @property(nonatomic, copy) NSString *displayTitle;
@@ -300,6 +297,7 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
                detail:(NSString *)detail
                symbol:(NSString *)symbol
               artwork:(UIImage *)artwork {
+
     self.displayMode = mode;
     self.displayTitle = title;
     self.displayDetail = detail;
@@ -308,6 +306,7 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
 
     self.titleLabel.text = title;
     self.detailLabel.text = detail;
+
     self.symbolView.image =
         symbol.length ? [UIImage systemImageNamed:symbol] : nil;
 
@@ -398,25 +397,27 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
 
         self.detailLabel.frame =
             CGRectMake(53, 29, MAX(0, width - 68), 15);
+
     } else if (self.displayMode == DNDisplayModeMediaCompact) {
         self.compactArtworkView.frame =
             CGRectMake(9, 6, 26, 26);
 
         CGFloat barStartX = MAX(48, width - 57);
-
         CGFloat barHeights[] = {9, 17, 23, 14, 10};
 
         for (NSInteger index = 0;
              index < self.visualizerBars.count;
              index++) {
-            UIView *bar = self.visualizerBars[index];
 
+            UIView *bar = self.visualizerBars[index];
             CGFloat barHeight = barHeights[index];
 
             bar.bounds = CGRectMake(0, 0, 3, barHeight);
+
             bar.center =
                 CGPointMake(barStartX + index * 8, height * 0.5);
         }
+
     } else if (self.displayMode == DNDisplayModeMediaExpanded) {
         self.artworkView.frame = CGRectMake(13, 15, 70, 70);
 
@@ -432,6 +433,7 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
     for (NSInteger index = 0;
          index < self.visualizerBars.count;
          index++) {
+
         UIView *bar = self.visualizerBars[index];
 
         [bar.layer removeAnimationForKey:@"umn1.visualizer"];
@@ -479,6 +481,7 @@ static BOOL DNModelUsesCompactNotch(NSString *model) {
     animation.fromValue = @0;
     animation.toValue = @1;
     animation.duration = 0.85;
+
     animation.timingFunction =
         [CAMediaTimingFunction functionWithName:
             kCAMediaTimingFunctionEaseInEaseOut];
@@ -587,7 +590,6 @@ static void DNLoadMediaRemote(void) {
 @property(nonatomic, strong) NSTimer *pollTimer;
 @property(nonatomic, strong) NSTimer *mediaTimer;
 @property(nonatomic, strong) NSTimer *mediaIntroTimer;
-
 @property(nonatomic, strong) AVAudioPlayer *impactPlayer;
 @property(nonatomic, strong) CAEmitterLayer *dropletEmitter;
 
@@ -612,13 +614,11 @@ static void DNLoadMediaRemote(void) {
 @property(nonatomic, assign) BOOL hideInCamera;
 @property(nonatomic, assign) BOOL hideInLandscape;
 @property(nonatomic, assign) BOOL autoCollapse;
-
 @property(nonatomic, assign) BOOL easterEggsEnabled;
 @property(nonatomic, assign) BOOL sosGestureEnabled;
 @property(nonatomic, assign) BOOL moltenEffectEnabled;
 @property(nonatomic, assign) BOOL explosionSoundEnabled;
 @property(nonatomic, assign) BOOL greetingEnabled;
-
 @property(nonatomic, assign) BOOL virtualNotch;
 @property(nonatomic, assign) BOOL compactNotch;
 @property(nonatomic, assign) BOOL mediaPlaying;
@@ -729,7 +729,6 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
     );
 
     self.preferencesObserverInstalled = YES;
-
     self.hardwareModel = DNHardwareModel();
 
     [self reloadPreferences];
@@ -1254,6 +1253,7 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
 
 - (void)applyMediaInformation:(NSDictionary *)dictionary
                       playing:(BOOL)playing {
+
     NSString *title =
         dictionary[@"kMRMediaRemoteNowPlayingInfoTitle"] ?:
         dictionary[MPMediaItemPropertyTitle] ?:
@@ -1273,6 +1273,7 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
 
     if ([artworkValue isKindOfClass:UIImage.class]) {
         artwork = artworkValue;
+
     } else if ([artworkValue isKindOfClass:NSData.class]) {
         artwork = [UIImage imageWithData:artworkValue];
     }
@@ -1316,8 +1317,7 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
 
         [self.mediaIntroTimer invalidate];
 
-        __weak typeof(self) weakSelf = self;
-
+        // Удалено неиспользуемое объявление weakSelf.
         self.mediaIntroTimer =
             [NSTimer scheduledTimerWithTimeInterval:0.82
                                           target:self
@@ -1442,8 +1442,9 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
 }
 
 - (void)showTransientTitle:(NSString *)title
-                   detail:(NSString *)detail
-                   symbol:(NSString *)symbol {
+                    detail:(NSString *)detail
+                    symbol:(NSString *)symbol {
+
     [self.notch stopVisualizer];
 
     [self.notch configureMode:DNDisplayModeTransient
@@ -1518,6 +1519,7 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
 - (void)applyNotchFrameWidth:(CGFloat)width
                       height:(CGFloat)height
                     animated:(BOOL)animated {
+
     if (!self.window || !self.notch) {
         return;
     }
@@ -1544,6 +1546,7 @@ static void DNMediaRemoteChangedCallback(CFNotificationCenterRef center,
                          animations:^{
             self.notch.frame = target;
         } completion:nil];
+
     } else {
         self.notch.frame = target;
     }
@@ -1606,6 +1609,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     if (recognizer.state == UIGestureRecognizerStateEnded ||
         recognizer.state == UIGestureRecognizerStateCancelled ||
         recognizer.state == UIGestureRecognizerStateFailed) {
+
         if (self.mediaExpandedByHold) {
             self.mediaExpandedByHold = NO;
             [self refreshEvents];
@@ -1638,16 +1642,16 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     [alert addAction:
         [UIAlertAction actionWithTitle:@"Cancel"
-                               style:UIAlertActionStyleCancel
-                             handler:^(UIAlertAction *action) {
+                                 style:UIAlertActionStyleCancel
+                               handler:^(UIAlertAction *action) {
         __strong typeof(weakSelf) self = weakSelf;
         [self restorePreviousKeyWindow];
     }]];
 
     [alert addAction:
         [UIAlertAction actionWithTitle:@"Open emergency screen"
-                               style:UIAlertActionStyleDestructive
-                             handler:^(UIAlertAction *action) {
+                                 style:UIAlertActionStyleDestructive
+                               handler:^(UIAlertAction *action) {
         __strong typeof(weakSelf) self = weakSelf;
 
         [self restorePreviousKeyWindow];
@@ -1656,14 +1660,14 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
         if (url) {
             [UIApplication.sharedApplication openURL:url
-                                          options:@{}
-                                completionHandler:nil];
+                                              options:@{}
+                                    completionHandler:nil];
         }
     }]];
 
     [self.rootController presentViewController:alert
-                                    animated:YES
-                                  completion:nil];
+                                      animated:YES
+                                    completion:nil];
 }
 
 - (void)restorePreviousKeyWindow {
@@ -1717,8 +1721,10 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
                                 forKey:@"umn1.molten.heat"];
 
     self.notch.shapeLayer.fillColor = UIColor.whiteColor.CGColor;
+
     self.notch.shapeLayer.shadowColor =
         [UIColor colorWithRed:1 green:0.25 blue:0.02 alpha:1].CGColor;
+
     self.notch.shapeLayer.shadowOpacity = 0.85;
     self.notch.shapeLayer.shadowRadius = 14.0;
 
@@ -1820,7 +1826,6 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [self.dropletEmitter removeFromSuperlayer];
 
     CAEmitterLayer *emitter = [CAEmitterLayer layer];
-
     emitter.frame = self.rootController.view.bounds;
     emitter.emitterShape = kCAEmitterLayerLine;
     emitter.emitterMode = kCAEmitterLayerSurface;
@@ -1828,13 +1833,12 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     emitter.emitterPosition =
         CGPointMake(CGRectGetMidX(self.notch.frame),
-                   CGRectGetMaxY(self.notch.frame) + 1.0);
+                    CGRectGetMaxY(self.notch.frame) + 1.0);
 
     emitter.emitterSize =
         CGSizeMake(MIN(CGRectGetWidth(self.notch.bounds), 180.0), 2.0);
 
     CAEmitterCell *cell = [CAEmitterCell emitterCell];
-
     UIImage *dropletImage = [self moltenDropletImage];
 
     cell.contents = dropletImage ? (id)dropletImage.CGImage : nil;
@@ -1896,7 +1900,6 @@ static NSData *DNCreateImpactWAV(void) {
     memcpy(bytes, "RIFF", 4);
     DNWriteLE32(bytes + 4, 36 + dataLength);
     memcpy(bytes + 8, "WAVE", 4);
-
     memcpy(bytes + 12, "fmt ", 4);
     DNWriteLE32(bytes + 16, 16);
     DNWriteLE16(bytes + 20, 1);
