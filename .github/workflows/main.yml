@@ -1,3 +1,4 @@
+
 name: Build and Publish Umn1Notch Repository
 
 on:
@@ -29,37 +30,69 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           git clone --recursive https://github.com/theos/theos.git "$RUNNER_TEMP/theos"
+
           echo "THEOS=$RUNNER_TEMP/theos" >> "$GITHUB_ENV"
+
           mkdir -p "$RUNNER_TEMP/theos/sdks"
 
       - name: Install iOS SDK
         shell: bash
         run: |
           set -euo pipefail
+
           git clone --depth 1 https://github.com/theos/sdks.git "$RUNNER_TEMP/theos-sdks"
+
           SDK_COUNT=0
+
           while IFS= read -r -d '' SDK_PATH; do
             cp -R "$SDK_PATH" "$RUNNER_TEMP/theos/sdks/"
             echo "Installed SDK: $(basename "$SDK_PATH")"
             SDK_COUNT=$((SDK_COUNT + 1))
-          done < <(find "$RUNNER_TEMP/theos-sdks" -mindepth 1 -maxdepth 1 -type d -name 'iPhoneOS*.sdk' -print0)
+          done < <(
+            find "$RUNNER_TEMP/theos-sdks" \
+              -mindepth 1 \
+              -maxdepth 1 \
+              -type d \
+              -name 'iPhoneOS*.sdk' \
+              -print0
+          )
+
           if [ "$SDK_COUNT" -eq 0 ]; then
             echo "ERROR: No iPhoneOS SDK found"
             exit 1
           fi
+
           echo "Installed $SDK_COUNT iOS SDK(s)"
-          if [ ! -d "$RUNNER_TEMP/theos/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "ERROR: iPhoneOS16.5.sdk is required by Tweaks/Umn1Notch/Makefile"
+
+          SDK_DIR="$RUNNER_TEMP/theos/sdks/iPhoneOS16.5.sdk"
+
+          if [ ! -d "$SDK_DIR" ]; then
+            echo "ERROR: iPhoneOS16.5.sdk is required by Umn1Notch"
             exit 1
           fi
+
+          PREFERENCES_STUB="$SDK_DIR/System/Library/PrivateFrameworks/Preferences.framework/Preferences.tbd"
+
+          if [ ! -s "$PREFERENCES_STUB" ]; then
+            echo "ERROR: Preferences.framework stub not found:"
+            echo "$PREFERENCES_STUB"
+            exit 1
+          fi
+
+          echo "Verified Preferences.framework"
+          echo "SDK path: $SDK_DIR"
 
       - name: Build every project under Tweaks/
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p dist-debs
+
           shopt -s nullglob
+
           projects=(Tweaks/*/)
 
           if [ ${#projects[@]} -eq 0 ]; then
@@ -68,9 +101,11 @@ jobs:
           fi
 
           built_projects=0
+
           for project_dir in "${projects[@]}"; do
+
             if [ ! -f "${project_dir}Makefile" ] || [ ! -f "${project_dir}control" ]; then
-              echo "Skipping ${project_dir}: Makefile or control is missing (template/documentation folder)"
+              echo "Skipping ${project_dir}: Makefile or control is missing"
               continue
             fi
 
@@ -79,7 +114,9 @@ jobs:
             echo "=================================================="
 
             make -C "$project_dir" clean
+
             rm -rf "${project_dir}packages"
+
             make -C "$project_dir" package FINALPACKAGE=1
 
             if [ ! -d "${project_dir}packages" ]; then
@@ -88,7 +125,9 @@ jobs:
             fi
 
             project_debs=0
+
             while IFS= read -r -d '' deb; do
+
               package="$(dpkg-deb -f "$deb" Package)"
               version="$(dpkg-deb -f "$deb" Version)"
               architecture="$(dpkg-deb -f "$deb" Architecture)"
@@ -99,21 +138,35 @@ jobs:
               fi
 
               safe_version="${version//:/_}"
+
               destination="dist-debs/${package}_${safe_version}_${architecture}.deb"
+
               if [ -e "$destination" ]; then
                 echo "ERROR: Duplicate package artifact name: $destination"
                 exit 1
               fi
+
               cp "$deb" "$destination"
+
               echo "Collected: $package ($version) [$architecture]"
+
               project_debs=$((project_debs + 1))
-            done < <(find "${project_dir}packages" -maxdepth 1 -type f -name '*.deb' -print0)
+
+            done < <(
+              find "${project_dir}packages" \
+                -maxdepth 1 \
+                -type f \
+                -name '*.deb' \
+                -print0
+            )
 
             if [ "$project_debs" -eq 0 ]; then
               echo "ERROR: ${project_dir} did not produce any .deb files"
               exit 1
             fi
+
             built_projects=$((built_projects + 1))
+
           done
 
           if [ "$built_projects" -eq 0 ]; then
@@ -127,34 +180,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           python3 - <<'PYVALIDATE'
           from pathlib import Path
           import subprocess
           import sys
 
           debs = sorted(Path("dist-debs").glob("*.deb"))
+
           if not debs:
               sys.exit("ERROR: No Debian packages were generated")
 
           seen = set()
           found_main = False
+
           for deb in debs:
               fields = {}
+
               for field in ("Package", "Version", "Architecture"):
-                  result = subprocess.run(["dpkg-deb", "-f", str(deb), field], capture_output=True, text=True)
+                  result = subprocess.run(
+                      ["dpkg-deb", "-f", str(deb), field],
+                      capture_output=True,
+                      text=True
+                  )
+
                   if result.returncode:
                       sys.exit(f"ERROR: Cannot read {field} from {deb}")
+
                   fields[field] = result.stdout.strip()
+
               print("{Package} {Version} {Architecture}".format(**fields))
+
               if fields["Architecture"] != "iphoneos-arm64":
                   sys.exit(f"ERROR: Unsupported architecture in {deb}")
+
               if fields["Package"] in seen:
                   sys.exit(f"ERROR: Duplicate package identifier: {fields['Package']}")
+
               seen.add(fields["Package"])
+
               found_main |= fields["Package"] == "com.umn1notch.tweak"
 
           if not found_main:
               sys.exit("ERROR: Umn1Notch package was not generated")
+
           print(f"Validated {len(debs)} Debian package(s)")
           PYVALIDATE
 
@@ -170,6 +239,7 @@ jobs:
     name: Publish Sileo APT Repository
     needs: build
     if: github.ref == 'refs/heads/main'
+
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -204,47 +274,93 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p _site/debs _site/icons
-          find downloaded-debs -maxdepth 1 -type f -name '*.deb' -exec cp {} _site/debs/ \;
-          test -n "$(find _site/debs -maxdepth 1 -type f -name '*.deb' -print -quit)"
+
+          find downloaded-debs \
+            -maxdepth 1 \
+            -type f \
+            -name '*.deb' \
+            -exec cp {} _site/debs/ \;
+
+          test -n "$(
+            find _site/debs \
+              -maxdepth 1 \
+              -type f \
+              -name '*.deb' \
+              -print -quit
+          )"
 
           if [ -f assets/CydiaIcon.png ]; then
             cp assets/CydiaIcon.png _site/CydiaIcon.png
           fi
+
           if [ -d assets/icons ]; then
             cp -R assets/icons/. _site/icons/
           fi
 
           cd _site
+
           dpkg-scanpackages --arch iphoneos-arm64 debs /dev/null > Packages
+
           test -s Packages
 
           python3 - <<'PYINDEX'
           import subprocess
           from pathlib import Path
 
-          stanzas = Path("Packages").read_text(encoding="utf-8").strip().split("\n\n")
+          stanzas = Path("Packages").read_text(
+              encoding="utf-8"
+          ).strip().split("\n\n")
+
           icons = {}
+
           for deb in Path("debs").glob("*.deb"):
-              package = subprocess.check_output(["dpkg-deb", "-f", str(deb), "Package"], text=True).strip()
-              result = subprocess.run(["dpkg-deb", "-f", str(deb), "Icon"], text=True, capture_output=True)
+              package = subprocess.check_output(
+                  ["dpkg-deb", "-f", str(deb), "Package"],
+                  text=True
+              ).strip()
+
+              result = subprocess.run(
+                  ["dpkg-deb", "-f", str(deb), "Icon"],
+                  text=True,
+                  capture_output=True
+              )
+
               icon = result.stdout.strip() if result.returncode == 0 else ""
+
               if icon:
                   icons[package] = icon
 
           output = []
+
           for stanza in stanzas:
               lines = stanza.splitlines()
-              package_line = next((line for line in lines if line.startswith("Package: ")), "")
+
+              package_line = next(
+                  (line for line in lines if line.startswith("Package: ")),
+                  ""
+              )
+
               package = package_line.partition(": ")[2]
+
               icon = icons.get(package)
-              if icon and not any(line.startswith("Icon: ") for line in lines):
+
+              if icon and not any(
+                  line.startswith("Icon: ") for line in lines
+              ):
                   lines.insert(1, "Icon: " + icon)
+
               output.append("\n".join(lines))
-          Path("Packages").write_text("\n\n".join(output) + "\n", encoding="utf-8")
+
+          Path("Packages").write_text(
+              "\n\n".join(output) + "\n",
+              encoding="utf-8"
+          )
           PYINDEX
 
           gzip -9 -n -c Packages > Packages.gz
+
           gzip -t Packages.gz
 
           python3 - <<'PYRELEASE'
@@ -253,29 +369,49 @@ jobs:
           from pathlib import Path
 
           indexed_files = ("Packages", "Packages.gz")
-          hash_sections = (("MD5Sum", md5), ("SHA1", sha1), ("SHA256", sha256), ("SHA512", sha512))
+
+          hash_sections = (
+              ("MD5Sum", md5),
+              ("SHA1", sha1),
+              ("SHA256", sha256),
+              ("SHA512", sha512),
+          )
+
           lines = [
               "Origin: Umn1Chelovek",
               "Label: Umn1Repo",
               "Suite: stable",
               "Codename: ios",
-              "Date: " + datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
+              "Date: " + datetime.now(timezone.utc).strftime(
+                  "%a, %d %b %Y %H:%M:%S +0000"
+              ),
               "Architectures: iphoneos-arm64",
               "Components: main",
               "Description: Umn1Chelovek iOS tweak repository",
           ]
+
           for section, digest in hash_sections:
               lines.append(section + ":")
+
               for filename in indexed_files:
                   data = Path(filename).read_bytes()
-                  lines.append(f" {digest(data).hexdigest()} {len(data)} {filename}")
-          Path("Release").write_text("\n".join(lines) + "\n", encoding="ascii")
+
+                  lines.append(
+                      f" {digest(data).hexdigest()} {len(data)} {filename}"
+                  )
+
+          Path("Release").write_text(
+              "\n".join(lines) + "\n",
+              encoding="ascii"
+          )
           PYRELEASE
 
           grep -q '^Architectures: iphoneos-arm64$' Release
           grep -q '^SHA256:$' Release
           grep -q '^Package: com.umn1notch.tweak$' Packages
+
           gzip -dc Packages.gz | cmp - Packages
+
           touch .nojekyll
 
           cat > index.html <<'HTML'
